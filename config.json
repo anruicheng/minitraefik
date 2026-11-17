@@ -1,0 +1,25 @@
+{
+  "services": {
+    "svc-user": {
+      "servers": ["http://127.0.0.1:9001", "http://127.0.0.1:9002"]
+    },
+    "svc-order": {
+      "servers": ["http://127.0.0.1:9003", "http://127.0.0.1:9004"]
+    }
+  },
+  "routers": {
+    "users": {
+      "rule": "PathPrefix(`/users`)",
+      "service": "svc-user"
+    },
+    "orders": {
+      "rule": "PathPrefix(`/orders`)",
+      "service": "svc-order"
+    },
+    "fallback": {
+      "rule": "PathPrefix(`/`)",
+      "service": "svc-user",
+      "priority": 1
+    }
+  }
+}

@@ -1,41 +1,27 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 )
 
 func main() {
-	// user 业务
-	svcUser, err := NewService("svc-user", []string{
-		"http://127.0.0.1:9001",
-		"http://127.0.0.1:9002",
-	})
+	configPath := flag.String("config", "config.json", "path to dynamic config file")
+	flag.Parse()
+
+	cfg, err := LoadConfig(*configPath)
 	if err != nil {
-		log.Fatalf("build svc-user: %v", err)
+		log.Fatalf("load config: %v", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid config: %v", err)
 	}
 
-	// order 业务
-	svcOrder, err := NewService("svc-order", []string{
-		"http://127.0.0.1:9003",
-		"http://127.0.0.1:9004",
-	})
+	mux, err := NewRouterMux(cfg)
 	if err != nil {
-		log.Fatalf("build svc-order: %v", err)
+		log.Fatalf("build router mux: %v", err)
 	}
-
-	// 按路径前缀分流到两组业务
-	routerUser, err := NewRouter("user", "PathPrefix(`/users`)", svcUser)
-	if err != nil {
-		log.Fatalf("build router user: %v", err)
-	}
-
-	routerOrder, err := NewRouter("order", "PathPrefix(`/orders`)", svcOrder)
-	if err != nil {
-		log.Fatalf("build router order: %v", err)
-	}
-
-	mux := NewRouterMux([]*Router{routerUser, routerOrder})
 
 	ep := NewEntryPoint("web", ":8080", mux)
 	if err := ep.Start(); err != nil && err != http.ErrServerClosed {
