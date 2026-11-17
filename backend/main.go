@@ -27,9 +27,10 @@ func main() {
 			Method:  r.Method,
 		}
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
 		_ = json.NewEncoder(w).Encode(resp)
 	})
-	log.Printf("backend listening on %s", *addr)
+	log.Printf("%s listening on %s", *name, *addr)
 	if err := http.ListenAndServe(*addr, mux); err != nil {
 		log.Fatal(err)
 	}
