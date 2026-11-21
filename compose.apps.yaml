@@ -1,0 +1,50 @@
+# 后端应用专属 compose：引用网关建好的外部网络，不负责创建
+# 前置：compose.gateway.yaml 已启动（网络 minitraefik 必须已存在）
+# 启动：docker compose -f compose.apps.yaml up -d
+# 拆除：docker compose -f compose.apps.yaml down（不影响网关）
+#
+# 只有 user-a 负责 build，产物打 tag minitraefik-backend，其余直接复用镜像
+networks:
+  gateway:
+    external: true       # 声明"网络不归我建，用现成的"，缺失时启动会直接报错
+    name: minitraefik
+
+services:
+  user-a:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    image: minitraefik-backend:latest
+    command: ["-addr", ":9001", "-name", "user-a"]
+    networks: [gateway]
+    labels:
+      - "mini.traefik.router.users.rule=PathPrefix(`/users`)"
+      - "mini.traefik.router.users.service=svc-user"
+      - "mini.traefik.service.svc-user.servers=http://user-a:9001,http://user-b:9001"
+
+  user-b:
+    image: minitraefik-backend:latest
+    command: ["-addr", ":9001", "-name", "user-b"]
+    networks: [gateway]
+    labels:
+      - "mini.traefik.router.users.rule=PathPrefix(`/users`)"
+      - "mini.traefik.router.users.service=svc-user"
+      - "mini.traefik.service.svc-user.servers=http://user-a:9001,http://user-b:9001"
+
+  order-a:
+    image: minitraefik-backend:latest
+    command: ["-addr", ":9001", "-name", "order-a"]
+    networks: [gateway]
+    labels:
+      - "mini.traefik.router.orders.rule=PathPrefix(`/orders`)"
+      - "mini.traefik.router.orders.service=svc-order"
+      - "mini.traefik.service.svc-order.servers=http://order-a:9001,http://order-b:9001"
+
+  order-b:
+    image: minitraefik-backend:latest
+    command: ["-addr", ":9001", "-name", "order-b"]
+    networks: [gateway]
+    labels:
+      - "mini.traefik.router.orders.rule=PathPrefix(`/orders`)"
+      - "mini.traefik.router.orders.service=svc-order"
+      - "mini.traefik.service.svc-order.servers=http://order-a:9001,http://order-b:9001"

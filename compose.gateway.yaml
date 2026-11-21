@@ -1,0 +1,18 @@
+# 网关专属 compose：拥有共享网络，对外暴露端口
+# 启动：docker compose -f compose.gateway.yaml up -d
+# 拆除：docker compose -f compose.gateway.yaml down（会一并删网络，后端须先停）
+networks:
+  gateway:
+    name: minitraefik    # 固定网络名（去掉项目前缀），供 apps compose 以 external 引用
+
+services:
+  proxy:
+    build: .
+    networks: [gateway]
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    command: ["-provider", "docker", "-addr", ":8080"]

@@ -12,42 +12,44 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "config.json", "path to dynamic config file")
+	providerName := flag.String("provider", "file", "config provider: file or docker")
+	configPath := flag.String("config", "config.json", "path to dynamic config file (file provider only)")
+	addr := flag.String("addr", ":8080", "entrypoint listen address")
 	flag.Parse()
 
-	cfg, err := LoadConfig(*configPath)
+	p, err := newProvider(*providerName, *configPath)
 	if err != nil {
-		log.Fatalf("load config: %v", err)
-	}
-	if err := cfg.Validate(); err != nil {
-		log.Fatalf("invalid config: %v", err)
+		log.Fatal(err)
 	}
 
-	mux, err := NewRouterMux(cfg)
+	initialHandler, err := p.Bootstrap()
 	if err != nil {
-		log.Fatalf("build router mux: %v", err)
+		log.Fatal(err)
 	}
 
-	ep := NewEntryPoint("web", ":8080", mux)
+	ep := NewEntryPoint("web", *addr, initialHandler)
 
-	// 启动文件监听（在 goroutine 中运行）
-	stopWatcher, err := WatchConfig(*configPath, ep)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	stopProvider, err := p.Start(ctx, ep)
 	if err != nil {
-		log.Fatalf("watch config: %v", err)
+		log.Fatalf("start provider: %v", err)
 	}
 
-	// 优雅关闭信号处理
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
 		log.Println("received signal, shutting down...")
-
 		signal.Stop(sigCh)
-		stopWatcher()
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := ep.Shutdown(ctx); err != nil {
+
+		cancel()
+		stopProvider()
+
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if err := ep.Shutdown(shutdownCtx); err != nil {
 			log.Printf("shutdown error: %v", err)
 		}
 	}()
