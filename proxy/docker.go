@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"slices"
+	"strconv"
+	"strings"
+
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
-	"log"
-	"strings"
 )
 
 const labelPrefix = "mini.traefik."
@@ -61,6 +64,12 @@ func (p *DockerProvider) rebuild(ctx context.Context) error {
 }
 
 func (p *DockerProvider) parseContainerLabels(c container.Summary, cfg *Config) {
+	ip := containerIP(c)
+	type svcDecl struct {
+		port int
+	}
+	svcDecls := map[string]*svcDecl{}
+
 	for k, v := range c.Labels {
 		if !strings.HasPrefix(k, labelPrefix) {
 			continue
@@ -90,15 +99,47 @@ func (p *DockerProvider) parseContainerLabels(c container.Summary, cfg *Config) 
 			if cfg.Services[name] == nil {
 				cfg.Services[name] = &ServiceConfig{}
 			}
-			if field == "servers" {
-				urls := strings.Split(v, ",")
-				for i := range urls {
-					urls[i] = strings.TrimSpace(urls[i])
+			if svcDecls[name] == nil {
+				svcDecls[name] = &svcDecl{}
+			}
+			if field == "port" {
+				port, err := strconv.Atoi(v)
+				if err != nil {
+					log.Printf("docker provider: invalid port %q in label %q", v, k)
+					continue
 				}
-				cfg.Services[name].Servers = urls
+				svcDecls[name].port = port
 			}
 		}
 	}
+
+	if ip == "" {
+		return
+	}
+	for svcName, decl := range svcDecls {
+		if decl.port == 0 {
+			continue
+		}
+		url := fmt.Sprintf("http://%s:%d", ip, decl.port)
+		if !slices.Contains(cfg.Services[svcName].Servers, url) {
+			cfg.Services[svcName].Servers = append(cfg.Services[svcName].Servers, url)
+		}
+	}
+}
+
+func containerIP(c container.Summary) string {
+	if c.NetworkSettings == nil {
+		return ""
+	}
+	for name, ns := range c.NetworkSettings.Networks {
+		if name == "bridge" {
+			continue
+		}
+		if ns.IPAddress.IsValid() {
+			return ns.IPAddress.String()
+		}
+	}
+	return ""
 }
 
 func (p *DockerProvider) Start(ctx context.Context) (stop func(), err error) {
