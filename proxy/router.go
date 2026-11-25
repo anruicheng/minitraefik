@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
-	"minitraefik/proxy/rules"
 	"net/http"
 	"sort"
+	"time"
+
+	"minitraefik/proxy/rules"
 )
 
 // Router 把一条规则绑定到一个 Service。
@@ -73,16 +75,30 @@ func NewRouterMux(cfg *Config) (*RouterMux, error) {
 }
 
 func (m *RouterMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+	rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+	info := &requestInfo{router: "<no-router>", service: ""}
+
 	for _, rt := range m.routers {
 		if rt.matcher.Match(r) {
+			info.router = rt.Name
+			info.service = rt.ServiceName
 			svc, ok := m.services[rt.ServiceName]
 			if !ok {
-				http.Error(w, "internal error: service not found", http.StatusInternalServerError)
+				http.Error(rec, "internal error: service not found", http.StatusInternalServerError)
+				logAccess(r, rec, time.Since(start), info)
+				observe(info, rec, time.Since(start))
 				return
 			}
-			svc.ServeHTTP(w, r)
+			ctx := withRequestInfo(r.Context(), info)
+			svc.ServeHTTP(rec, r.WithContext(ctx))
+
+			logAccess(r, rec, time.Since(start), info)
+			observe(info, rec, time.Since(start))
 			return
 		}
 	}
-	m.notFound.ServeHTTP(w, r)
+	m.notFound.ServeHTTP(rec, r)
+	logAccess(r, rec, time.Since(start), info)
+	observe(info, rec, time.Since(start))
 }

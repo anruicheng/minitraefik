@@ -15,6 +15,7 @@ func main() {
 	providerName := flag.String("provider", "file", "config provider: file or docker")
 	configPath := flag.String("config", "config.json", "path to dynamic config file (file provider only)")
 	addr := flag.String("addr", ":8080", "entrypoint listen address")
+	metricsAddr := flag.String("metrics-addr", ":8081", "metrics listen address")
 	flag.Parse()
 
 	p, err := newProvider(*providerName, *configPath)
@@ -26,6 +27,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// metrics entrypoint 独立，不影响业务热更新
+	metricsEP := NewEntryPoint("metrics", *metricsAddr, metricsHandler())
+	go func() {
+		if err := metricsEP.Start(); err != nil && err != http.ErrServerClosed {
+			log.Printf("metrics entrypoint: %v", err)
+		}
+	}()
 
 	ep := NewEntryPoint("web", *addr, initialHandler)
 

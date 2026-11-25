@@ -46,6 +46,11 @@ func NewService(name string, rawURLs []string) (*Service, error) {
 func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	idx := s.next.Add(1) - 1
 	srv := s.servers[idx%uint64(len(s.servers))]
+
+	if info := requestInfoFrom(r.Context()); info != nil {
+		info.backend = srv.url.String()
+	}
+
 	srv.proxy.ServeHTTP(w, r)
 }
 
